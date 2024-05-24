@@ -6,5 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.86"
 clap = { version = "4.5.4", features = ["derive"] }
+log = "0.4.21"
 rustls = "0.23.8"
+stderrlog = "0.6.0"
 webpki-roots = "0.26.1"

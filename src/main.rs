@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Parser;
-use log::info;
+use log::{debug, info};
 use rustls::pki_types::ServerName;
 
 #[derive(clap::Parser, Debug)]
@@ -143,7 +143,19 @@ fn main() -> Result<()> {
     };
 
     let config = {
-        let mut config = rustls::ClientConfig::builder_with_protocol_versions(&versions)
+        let crypto = rustls::crypto::aws_lc_rs::default_provider();
+        info!("Cipher suites: {:?}", crypto.cipher_suites);
+        info!("KX groups: {:?}", crypto.kx_groups);
+        debug!(
+            "Signature algs {:?}",
+            crypto.signature_verification_algorithms.all
+        );
+        debug!(
+            "Signature algs {:?}",
+            crypto.signature_verification_algorithms.mapping
+        );
+        let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(crypto))
+            .with_protocol_versions(&versions)?
             .with_root_certificates(root_store)
             .with_no_client_auth();
         if !opt.alpn.is_empty() {

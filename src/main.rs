@@ -33,6 +33,9 @@ struct Opt {
     #[clap(long)]
     endpoint: Option<String>,
 
+    #[clap(long, default_value = "false")]
+    noverify: bool,
+
     #[clap()]
     addr: String,
 }
@@ -188,6 +191,63 @@ impl rustls::client::ClientSessionStore for TicketStore {
     }
 }
 
+#[derive(Debug)]
+struct AcceptAll {}
+
+impl AcceptAll {
+    fn new() -> Result<Arc<Self>> {
+        Ok(Arc::new(Self {}))
+    }
+}
+impl rustls::client::danger::ServerCertVerifier for AcceptAll {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        info!("Verifying server name {server_name:?}");
+        return Ok(rustls::client::danger::ServerCertVerified::assertion());
+    }
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        return Ok(rustls::client::danger::HandshakeSignatureValid::assertion());
+    }
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        // TODO: Really, wa want a complete list, or delegate to a
+        // parent verifier.
+        vec![
+            rustls::SignatureScheme::RSA_PKCS1_SHA1,
+            rustls::SignatureScheme::ECDSA_SHA1_Legacy,
+            rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            rustls::SignatureScheme::RSA_PKCS1_SHA384,
+            rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
+            rustls::SignatureScheme::RSA_PKCS1_SHA512,
+            rustls::SignatureScheme::ECDSA_NISTP521_SHA512,
+            rustls::SignatureScheme::RSA_PSS_SHA256,
+            rustls::SignatureScheme::RSA_PSS_SHA384,
+            rustls::SignatureScheme::RSA_PSS_SHA512,
+            rustls::SignatureScheme::ED25519,
+            rustls::SignatureScheme::ED448,
+        ]
+    }
+}
+
 fn main() -> Result<()> {
     let opt = Opt::parse();
     stderrlog::new()
@@ -223,10 +283,16 @@ fn main() -> Result<()> {
             crypto.signature_verification_algorithms.mapping
         );
 
-        let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(crypto))
-            .with_protocol_versions(&versions)?
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
+        let config = rustls::ClientConfig::builder_with_provider(Arc::new(crypto))
+            .with_protocol_versions(&versions)?;
+        let mut config = if opt.noverify {
+            config
+                .dangerous()
+                .with_custom_certificate_verifier(AcceptAll::new()?)
+        } else {
+            config.with_root_certificates(root_store)
+        }
+        .with_no_client_auth();
 
         if let Some(alpn) = opt.alpn {
             config.alpn_protocols = vec![alpn.bytes().collect()];

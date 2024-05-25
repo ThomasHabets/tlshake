@@ -21,8 +21,8 @@ struct Opt {
     #[clap(short, default_value = "443")]
     port: u16,
 
-    #[clap(long, default_value = "")]
-    alpn: String,
+    #[clap(long)]
+    alpn: Option<String>,
 
     #[clap(long)]
     http_get: Option<String>,
@@ -215,8 +215,8 @@ fn main() -> Result<()> {
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
-        if !opt.alpn.is_empty() {
-            config.alpn_protocols = vec![opt.alpn.bytes().collect()];
+        if let Some(alpn) = opt.alpn {
+            config.alpn_protocols = vec![alpn.bytes().collect()];
         }
         config.resumption = rustls::client::Resumption::store(Arc::new(TicketStore::new()));
         config.enable_early_data = true;

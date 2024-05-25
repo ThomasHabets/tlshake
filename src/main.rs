@@ -30,6 +30,9 @@ struct Opt {
     #[clap(long, default_value = "false")]
     contents: bool,
 
+    #[clap(long)]
+    endpoint: Option<String>,
+
     #[clap()]
     addr: String,
 }
@@ -237,7 +240,12 @@ fn main() -> Result<()> {
 
     let host = &opt.addr;
     // TODO: support IPv6 literals.
-    let hostport = host.to_owned() + ":" + &opt.port.to_string();
+
+    let hostport = if let Some(endpoint) = opt.endpoint {
+        endpoint
+    } else {
+        host.to_owned() + ":" + &opt.port.to_string()
+    };
     let request = opt.http_get.map(|url| {
 	format!(
             "GET {url} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept-Encoding: identity\r\n\r\n")

@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::sync::Arc;
 
@@ -27,6 +27,9 @@ struct Opt {
     #[clap(long)]
     http_get: Option<String>,
 
+    #[clap(long, default_value = "false")]
+    contents: bool,
+
     #[clap()]
     addr: String,
 }
@@ -36,6 +39,7 @@ fn doit(
     host: &str,
     hostport: &str,
     request: Option<&str>,
+    dump_contents: bool,
 ) -> Result<()> {
     let mut conn = rustls::ClientConnection::new(config, ServerName::try_from(host)?.to_owned())?;
 
@@ -104,7 +108,13 @@ fn doit(
         }
         let firstline = {
             let mut r = String::new();
-            BufReader::new(stream).read_line(&mut r)?;
+            let mut buf = BufReader::new(stream);
+            buf.read_line(&mut r)?;
+            if dump_contents {
+                let mut contents = String::new();
+                buf.read_to_string(&mut contents)?;
+                println!("{contents}");
+            }
             r.replace("\r", "").replace("\n", "")
         };
         println!("  HTTP first line:    {firstline}");
@@ -232,8 +242,20 @@ fn main() -> Result<()> {
 	format!(
             "GET {url} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept-Encoding: identity\r\n\r\n")
     });
-    doit(config.clone(), &host, &hostport, request.as_deref())?;
+    doit(
+        config.clone(),
+        &host,
+        &hostport,
+        request.as_deref(),
+        opt.contents,
+    )?;
     println!("");
-    doit(config.clone(), &host, &hostport, request.as_deref())?;
+    doit(
+        config.clone(),
+        &host,
+        &hostport,
+        request.as_deref(),
+        opt.contents,
+    )?;
     Ok(())
 }

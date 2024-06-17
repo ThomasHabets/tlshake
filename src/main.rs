@@ -8,6 +8,7 @@ use log::{debug, info};
 use rustls::pki_types::ServerName;
 
 #[derive(clap::Parser, Debug)]
+#[command(version, after_help = "https://github.com/ThomasHabets/tlshake")]
 struct Opt {
     #[clap(short, default_value = "0")]
     verbose: usize,

@@ -41,6 +41,7 @@ struct Opt {
 }
 
 fn doit(
+    name: &str,
     config: Arc<rustls::ClientConfig>,
     host: &str,
     hostport: &str,
@@ -49,7 +50,7 @@ fn doit(
 ) -> Result<()> {
     let mut conn = rustls::ClientConnection::new(config, ServerName::try_from(host)?.to_owned())?;
 
-    println!("Connection");
+    println!("Connection: {name}");
     let sent_early = if let Some(req) = request {
         if let Some(mut early_data) = conn.early_data() {
             early_data.write_all(req.as_bytes())?;
@@ -317,6 +318,7 @@ fn main() -> Result<()> {
             "GET {url} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept-Encoding: identity\r\n\r\n")
     });
     doit(
+        "initial",
         config.clone(),
         &host,
         &hostport,
@@ -325,6 +327,7 @@ fn main() -> Result<()> {
     )?;
     println!("");
     doit(
+        "resume",
         config.clone(),
         &host,
         &hostport,

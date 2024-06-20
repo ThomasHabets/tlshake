@@ -108,6 +108,9 @@ struct Opt {
     #[clap(long, default_value = "false", help = "Don't verify server cert.")]
     noverify: bool,
 
+    #[clap(long, default_value = "1", help = "Number of resumptions to attempt.")]
+    resumptions: usize,
+
     #[clap(help = "Target to connect to, excluding port.")]
     addr: String,
 }
@@ -400,21 +403,26 @@ fn main() -> Result<()> {
     if opt.json {
         println!("{}", serde_json::to_string(&res)?);
     } else {
-        println!("{}", res);
+        print!("{}", res);
     }
 
-    let res = doit(
-        "resume",
-        config.clone(),
-        &host,
-        &hostport,
-        request.as_deref(),
-        opt.contents,
-    )?;
-    if opt.json {
-        println!("{}", serde_json::to_string(&res)?);
-    } else {
-        print!("{}", res);
+    for _ in 0..opt.resumptions {
+        if !opt.json {
+            println!();
+        }
+        let res = doit(
+            "resume",
+            config.clone(),
+            &host,
+            &hostport,
+            request.as_deref(),
+            opt.contents,
+        )?;
+        if opt.json {
+            println!("{}", serde_json::to_string(&res)?);
+        } else {
+            print!("{}", res);
+        }
     }
     Ok(())
 }

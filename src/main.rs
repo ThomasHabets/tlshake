@@ -6,26 +6,91 @@ use anyhow::{Error, Result};
 use clap::Parser;
 use log::{debug, info};
 use rustls::pki_types::ServerName;
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Default)]
+struct ConnectionResult {
+    name: String,
+    target: String,
+    endpoint: String,
+    sent_early_data: bool,
+    early_data_accepted: bool,
+    connect_time_ms: f64,
+    handshake_time_ms: f64,
+    handshake_kind: String,
+    protocol_version: String,
+    cipher_suite: String,
+    total_time_ms: f64,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alpn: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    first_line: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_time_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contents: Option<String>,
+}
+
+impl core::fmt::Display for ConnectionResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "Connection: {}\n", self.name)?;
+        write!(f, "  Target:           {}\n", self.target)?;
+        write!(f, "  Endpoint:         {}\n", self.endpoint)?;
+        write!(f, "  Connect time:     {:.3}ms\n", self.connect_time_ms)?;
+        write!(f, "  Handshake time:   {:.3}ms\n", self.handshake_time_ms)?;
+        write!(f, "  Handshake kind:   {}\n", self.handshake_kind)?;
+        write!(f, "  Protocol version: {}\n", self.protocol_version)?;
+        write!(f, "  Cipher suite:     {}\n", self.cipher_suite)?;
+        write!(f, "  ALPN protocol:    {:?}\n", self.alpn)?;
+        if self.early_data_accepted {
+            write!(f, "  Early data:       accepted\n")?;
+        } else if self.sent_early_data {
+            write!(f, "  Early data:       NOT accepted\n")?;
+        }
+        if let Some(rt) = &self.request_time_ms {
+            write!(f, "  Request time:     {rt:.3}ms\n")?;
+        }
+        if let Some(firstline) = &self.first_line {
+            write!(f, "  Reply first line: {firstline}\n")?;
+        }
+        write!(f, "  Total time:       {:.3}ms\n", self.total_time_ms)?;
+        if let Some(contents) = &self.contents {
+            write!(f, "  Contents:\n{contents}\n")?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(clap::Parser, Debug)]
 #[command(version, after_help = "https://github.com/ThomasHabets/tlshake")]
 struct Opt {
-    #[clap(short, default_value = "0")]
+    #[clap(short, default_value = "0", help = "Output some debug output.")]
     verbose: usize,
 
-    #[clap(long)]
+    #[clap(long, help = "Output results in JSON format.", default_value = "false")]
+    json: bool,
+
+    #[clap(long, help = "Use TLS 1.2.")]
     tls12: bool,
 
-    #[clap(long)]
+    #[clap(long, help = "Use TLS 1.3.")]
     tls13: bool,
 
-    #[clap(short, default_value = "443")]
+    #[clap(
+        short,
+        default_value = "443",
+        help = "Default port.\nOverridden by --endpoint."
+    )]
     port: u16,
 
-    #[clap(long)]
+    #[clap(long, help = "Set inner protocol using ALPN field.")]
     alpn: Option<String>,
 
-    #[clap(long)]
+    #[clap(
+        long,
+        help = "Send HTTP GET on connection,\nas early data if resuming TLS 1.3."
+    )]
     http_get: Option<String>,
 
     #[clap(long, help = "Read early data from file.")]
@@ -34,13 +99,16 @@ struct Opt {
     #[clap(long, default_value = "false", help = "Dump reply content.")]
     contents: bool,
 
-    #[clap(long)]
+    #[clap(
+        long,
+        help = "Override connect to host:port instead\nof resolving target."
+    )]
     endpoint: Option<String>,
 
-    #[clap(long, default_value = "false")]
+    #[clap(long, default_value = "false", help = "Don't verify server cert.")]
     noverify: bool,
 
-    #[clap()]
+    #[clap(help = "Target to connect to, excluding port.")]
     addr: String,
 }
 
@@ -51,14 +119,17 @@ fn doit(
     hostport: &str,
     request: Option<&str>,
     dump_contents: bool,
-) -> Result<()> {
+) -> Result<ConnectionResult> {
     let mut conn = rustls::ClientConnection::new(config, ServerName::try_from(host)?.to_owned())?;
 
-    println!("Connection: {name}");
-    let sent_early = if let Some(req) = request {
+    let mut res: ConnectionResult = Default::default();
+    res.name = name.to_string();
+    res.target = host.to_string();
+    res.endpoint = hostport.to_string();
+
+    res.sent_early_data = if let Some(req) = request {
         if let Some(mut early_data) = conn.early_data() {
             early_data.write_all(req.as_bytes())?;
-            println!("  Attempting early data");
             true
         } else {
             false
@@ -70,70 +141,63 @@ fn doit(
     // Connect TCP.
     let tcp_start = std::time::Instant::now();
     let mut sock = TcpStream::connect(&hostport)?;
-    println!("  Connect time:       {:?}", tcp_start.elapsed());
+    res.connect_time_ms = tcp_start.elapsed().as_secs_f64() * 1000.0;
     sock.set_nodelay(true)?;
 
     // Handshake.
     let mut stream = rustls::Stream::new(&mut conn, &mut sock);
     let start = std::time::Instant::now();
     stream.flush()?;
-    println!("  Handshake time:     {:?}", start.elapsed());
-    println!(
-        "  Handshake kind:     {:?}",
+    res.handshake_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+    res.handshake_kind = format!(
+        "{:?}",
         stream
             .conn
             .handshake_kind()
             .ok_or(Error::msg("no handshake kind?"))?
     );
-    println!(
-        "  Protocol version:   {:?}",
+    res.protocol_version = format!(
+        "{:?}",
         stream
             .conn
             .protocol_version()
             .ok_or(Error::msg("no protocol version?"))?
     );
-    println!(
-        "  Cipher suite:       {:?}",
+    res.cipher_suite = format!(
+        "{:?}",
         stream
             .conn
             .negotiated_cipher_suite()
             .ok_or(Error::msg("no cipher?"))?
     );
-    println!(
-        "  ALPN protocol       {:?}",
-        stream
-            .conn
-            .alpn_protocol()
-            .map(|s| String::from_utf8(s.to_vec()))
-    );
+    res.alpn = stream
+        .conn
+        .alpn_protocol()
+        .map(|s| format!("{:?}", String::from_utf8(s.to_vec())));
 
     if let Some(req) = request {
         let start = std::time::Instant::now();
         if stream.conn.is_early_data_accepted() {
-            println!("  Early data:         accepted");
+            res.early_data_accepted = true;
         } else {
-            if sent_early {
-                println!("  Early data:         NOT accepted");
-            }
             stream.write_all(req.as_bytes())?;
         }
-        let firstline = {
+        res.first_line = {
             let mut r = String::new();
             let mut buf = BufReader::new(stream);
             buf.read_line(&mut r)?;
             if dump_contents {
                 let mut contents = String::new();
                 buf.read_to_string(&mut contents)?;
-                println!("{contents}");
+                res.contents = Some(contents);
             }
-            r.replace("\r", "").replace("\n", "")
+            Some(r.replace("\r", "").replace("\n", ""))
         };
-        println!("  HTTP first line:    {firstline}");
-        println!("  Request time:       {:?}", start.elapsed());
+        res.request_time_ms = Some(start.elapsed().as_secs_f64() * 1000.0);
     }
-    println!("  Total time:         {:?}", tcp_start.elapsed());
+    res.total_time_ms = tcp_start.elapsed().as_secs_f64() * 1000.0;
 
-    Ok(())
+    Ok(res)
 }
 
 #[derive(Debug)]
@@ -333,8 +397,13 @@ fn main() -> Result<()> {
         request.as_deref(),
         opt.contents,
     )?;
-    println!("");
-    doit(
+    if opt.json {
+        println!("{}", serde_json::to_string(&res)?);
+    } else {
+        println!("{}", res);
+    }
+
+    let res = doit(
         "resume",
         config.clone(),
         &host,
@@ -342,5 +411,10 @@ fn main() -> Result<()> {
         request.as_deref(),
         opt.contents,
     )?;
+    if opt.json {
+        println!("{}", serde_json::to_string(&res)?);
+    } else {
+        print!("{}", res);
+    }
     Ok(())
 }

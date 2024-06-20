@@ -4,6 +4,13 @@ Show TLS handshake details, for initial connection and resumptions.
 
 https://github.com/ThomasHabets/tlshake
 
+## Building
+
+First install Rust compiler. The easiest way is to follow https://rustup.rs/
+
+Then just run `cargo build --release`. The binary is now
+`./target/release/tlshake`.
+
 ## Example
 
 ```

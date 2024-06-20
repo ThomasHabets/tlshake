@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default)]
 struct ConnectionResult {
+    timestamp_us: u128,
+
     name: String,
     target: String,
     endpoint: String,
@@ -126,6 +128,9 @@ fn doit(
     let mut conn = rustls::ClientConnection::new(config, ServerName::try_from(host)?.to_owned())?;
 
     let mut res: ConnectionResult = Default::default();
+    res.timestamp_us = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_micros();
     res.name = name.to_string();
     res.target = host.to_string();
     res.endpoint = hostport.to_string();

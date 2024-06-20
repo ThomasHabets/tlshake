@@ -28,7 +28,10 @@ struct Opt {
     #[clap(long)]
     http_get: Option<String>,
 
-    #[clap(long, default_value = "false")]
+    #[clap(long, help = "Read early data from file.")]
+    early_data: Option<std::path::PathBuf>,
+
+    #[clap(long, default_value = "false", help = "Dump reply content.")]
     contents: bool,
 
     #[clap(long)]
@@ -314,11 +317,15 @@ fn main() -> Result<()> {
     } else {
         host.to_owned() + ":" + &opt.port.to_string()
     };
-    let request = opt.http_get.map(|url| {
-	format!(
-            "GET {url} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept-Encoding: identity\r\n\r\n")
-    });
-    doit(
+    let request = if let Some(url) = opt.http_get {
+        Some(format!(
+            "GET {url} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept-Encoding: identity\r\n\r\n"))
+    } else if let Some(data) = opt.early_data {
+        Some(std::fs::read_to_string(data)?)
+    } else {
+        None
+    };
+    let res = doit(
         "initial",
         config.clone(),
         &host,

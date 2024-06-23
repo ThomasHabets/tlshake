@@ -37,8 +37,9 @@ Connection: resume
 ## Why doesn't it resume TLS 1.3?
 
 Unlike previous versions, TLS 1.3 resumptions by default don't save a
-roundtrip. In order to save a roundtrip, the client has to provide
-"early data".
+roundtrip, so it's already pretty good. But it can save CPU cycles,
+and provides the opportunity to use "early data", saving another
+roundtrip.
 
 Early data should never be used for things that are dangerous to
 replay, like HTTP `POST` requests. Indeed, browsers don't do that.
@@ -47,29 +48,37 @@ replay, like HTTP `POST` requests. Indeed, browsers don't do that.
 know what protocol is on the other side. But you can provide
 `--http-get /` to make it send an HTTP GET request.
 
+See [this blog post][blog] for more details.
+
+[blog]: https://blog.habets.se/2024/06/Is-your-TLS-resuming.html
+
 ```
 $ tlshake --http-get / www.google.com
 Connection: initial
-  Connect time:       67.48784ms
-  Handshake time:     39.743272ms
-  Handshake kind:     Full
-  Protocol version:   TLSv1_3
-  Cipher suite:       TLS13_AES_256_GCM_SHA384
-  ALPN protocol       None
-  HTTP first line:    HTTP/1.1 200 OK
-  Request time:       96.245487ms
-  Total time:         203.6481ms
+  Target:           www.google.com
+  Endpoint:         www.google.com:443
+  Connect time:     66.925ms
+  Handshake time:   39.772ms
+  Handshake kind:   Full
+  Protocol version: TLSv1_3
+  Cipher suite:     TLS13_AES_256_GCM_SHA384
+  ALPN protocol:    None
+  Early data:       Not attempted
+  Request time:     95.896ms
+  Reply first line: HTTP/1.1 200 OK
+  Total time:       202.626ms
 
 Connection: resume
-  Attempting early data
-  Connect time:       65.618797ms
-  Handshake time:     38.251564ms
-  Handshake kind:     Resumed
-  Protocol version:   TLSv1_3
-  Cipher suite:       TLS13_AES_256_GCM_SHA384
-  ALPN protocol       None
-  Early data:         accepted
-  HTTP first line:    HTTP/1.1 200 OK
-  Request time:       69.220143ms
-  Total time:         173.238986ms
+  Target:           www.google.com
+  Endpoint:         www.google.com:443
+  Connect time:     55.783ms
+  Handshake time:   39.370ms
+  Handshake kind:   Resumed
+  Protocol version: TLSv1_3
+  Cipher suite:     TLS13_AES_256_GCM_SHA384
+  ALPN protocol:    None
+  Early data:       accepted
+  Request time:     57.119ms
+  Reply first line: HTTP/1.1 200 OK
+  Total time:       152.301ms
 ```

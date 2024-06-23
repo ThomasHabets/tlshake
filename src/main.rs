@@ -49,6 +49,8 @@ impl core::fmt::Display for ConnectionResult {
             write!(f, "  Early data:       accepted\n")?;
         } else if self.sent_early_data {
             write!(f, "  Early data:       NOT accepted\n")?;
+        } else {
+            write!(f, "  Early data:       Not attempted\n")?;
         }
         if let Some(rt) = &self.request_time_ms {
             write!(f, "  Request time:     {rt:.3}ms\n")?;
@@ -78,6 +80,9 @@ struct Opt {
 
     #[clap(long, help = "Use TLS 1.3.")]
     tls13: bool,
+
+    #[clap(long, default_value = "false", help = "Allow sending early data.")]
+    disable_early_data: bool,
 
     #[clap(
         short,
@@ -124,6 +129,7 @@ fn doit(
     hostport: &str,
     request: Option<&str>,
     dump_contents: bool,
+    disable_early_data: bool,
 ) -> Result<ConnectionResult> {
     let mut conn = rustls::ClientConnection::new(config, ServerName::try_from(host)?.to_owned())?;
 
@@ -135,16 +141,18 @@ fn doit(
     res.target = host.to_string();
     res.endpoint = hostport.to_string();
 
-    res.sent_early_data = if let Some(req) = request {
-        if let Some(mut early_data) = conn.early_data() {
-            early_data.write_all(req.as_bytes())?;
-            true
+    if !disable_early_data {
+        res.sent_early_data = if let Some(req) = request {
+            if let Some(mut early_data) = conn.early_data() {
+                early_data.write_all(req.as_bytes())?;
+                true
+            } else {
+                false
+            }
         } else {
             false
-        }
-    } else {
-        false
-    };
+        };
+    }
 
     // Connect TCP.
     let tcp_start = std::time::Instant::now();
@@ -405,6 +413,7 @@ fn main() -> Result<()> {
         &hostport,
         request.as_deref(),
         opt.contents,
+        opt.disable_early_data,
     )?;
     if opt.json {
         println!("{}", serde_json::to_string(&res)?);
@@ -423,6 +432,7 @@ fn main() -> Result<()> {
             &hostport,
             request.as_deref(),
             opt.contents,
+            opt.disable_early_data,
         )?;
         if opt.json {
             println!("{}", serde_json::to_string(&res)?);

@@ -182,10 +182,10 @@ fn doit(
         .conn
         .alpn_protocol()
         .map(|s| format!("{:?}", String::from_utf8(s.to_vec())));
-
+    debug!("About to send request as 'late data'");
     if let Some(req) = request {
         let start = std::time::Instant::now();
-        if stream.conn.is_early_data_accepted() {
+        if res.sent_early_data && stream.conn.is_early_data_accepted() {
             res.early_data_accepted = true;
         } else {
             stream.write_all(req.as_bytes())?;
@@ -203,8 +203,9 @@ fn doit(
         };
         res.request_time_ms = Some(start.elapsed().as_secs_f64() * 1000.0);
     }
-    res.total_time_ms = tcp_start.elapsed().as_secs_f64() * 1000.0;
 
+    res.total_time_ms = tcp_start.elapsed().as_secs_f64() * 1000.0;
+    debug!("Request all done");
     Ok(res)
 }
 

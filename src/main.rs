@@ -186,10 +186,9 @@ fn doit(
             .negotiated_cipher_suite()
             .ok_or(Error::msg("no cipher?"))?
     );
-    res.alpn = stream
-        .conn
-        .alpn_protocol()
-        .map(|s| format!("{:?}", String::from_utf8(s.to_vec())));
+    res.alpn = stream.conn.alpn_protocol().map(|s| {
+        String::from_utf8(s.to_vec()).expect("ALPN protocol failed to translate to string")
+    });
     debug!("About to send request as 'late data'");
     if let Some(req) = request {
         let start = std::time::Instant::now();
